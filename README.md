@@ -21,18 +21,21 @@ The standard `url.Values.Encode()` method sorts query parameters lexicographical
 ```go
 package main
 
-import "github.com/nukilabs/surl"
+import (
+    "fmt"
+    "github.com/nukilabs/surl"
+)
 
 func main() {
-    v := url.Values{
+    v := surl.Values{
         "zebra":  {"1"},
         "apple":  {"2"},
         "banana": {"3"},
         // Define custom order using OrderKey
-        url.OrderKey: {"banana", "zebra", "apple"},
+        surl.OrderKey: {"banana", "zebra", "apple"},
     }
     
-    println(v.Encode())
+    fmt.Println(v.Encode())
     // Output: banana=3&zebra=1&apple=2
     
     // Without OrderKey, output would be: apple=2&banana=3&zebra=1
@@ -41,7 +44,7 @@ func main() {
 
 ### How It Works
 
-- **With `OrderKey`**: Parameters are ordered according to the slice provided in `url.OrderKey`
+- **With `OrderKey`**: Parameters are ordered according to the slice provided in `surl.OrderKey`
   - Keys defined in the order slice appear first, in the specified order
   - Keys not defined in the order slice appear last, sorted lexicographically
   - The `OrderKey` itself is not included in the encoded output
@@ -61,7 +64,7 @@ This feature is particularly useful when:
 This package maintains full API compatibility with Go's standard `net/url` package. You can use it as a drop-in replacement:
 
 ```go
-import url "github.com/nukilabs/surl"
+import surl "github.com/nukilabs/surl"
 ```
 
 All standard functionality remains unchanged, including:

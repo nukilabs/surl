@@ -2,12 +2,12 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package url parses URLs and implements query escaping.
+// Package surl parses URLs and implements query escaping.
 //
 // See RFC 3986. This package generally follows RFC 3986, except where
 // it deviates for compatibility reasons.
 // RFC 6874 followed for IPv6 zone literals.
-package url
+package surl
 
 // When sending changes, first  search old issues for history on decisions.
 // Unit tests should also contain references to issue numbers with details.
