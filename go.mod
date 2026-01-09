@@ -1,3 +1,3 @@
-module github.com/robin-samuel/furl
+module github.com/nukilabs/surl
 
-go 1.21.6
+go 1.25
