@@ -15,6 +15,7 @@ package surl
 import (
 	"errors"
 	"fmt"
+	"iter"
 	"maps"
 	"path"
 	"slices"
@@ -1058,6 +1059,55 @@ func (v Values) Encode() string {
 		}
 	}
 	return buf.String()
+}
+
+// All returns an iterator over all key-value pairs in the Values map.
+// Each value for a multi-valued key is yielded as a separate pair.
+// If [OrderKey] is present, keys appear in the specified order first,
+// followed by remaining keys sorted lexicographically. Otherwise,
+// all keys are sorted lexicographically.
+// The [OrderKey] itself is excluded from iteration.
+func (v Values) All() iter.Seq2[string, string] {
+	return func(yield func(string, string) bool) {
+		keys := maps.Keys(v)
+		var sorted []string
+
+		if orderSlice, ok := v[OrderKey]; ok {
+			orderMap := make(map[string]int)
+			for i, key := range orderSlice {
+				orderMap[key] = i
+			}
+
+			var ordered, unordered []string
+			for k := range keys {
+				if k == OrderKey {
+					continue
+				}
+				if _, inOrder := orderMap[k]; inOrder {
+					ordered = append(ordered, k)
+				} else {
+					unordered = append(unordered, k)
+				}
+			}
+
+			slices.SortFunc(ordered, func(a, b string) int {
+				return orderMap[a] - orderMap[b]
+			})
+			slices.Sort(unordered)
+
+			sorted = append(ordered, unordered...)
+		} else {
+			sorted = slices.Sorted(keys)
+		}
+
+		for _, k := range sorted {
+			for _, val := range v[k] {
+				if !yield(k, val) {
+					return
+				}
+			}
+		}
+	}
 }
 
 // resolvePath applies special path segments from refs and applies
