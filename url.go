@@ -1067,8 +1067,8 @@ func (v Values) Encode() string {
 // followed by remaining keys sorted lexicographically. Otherwise,
 // all keys are sorted lexicographically.
 // The [OrderKey] itself is excluded from iteration.
-func (v Values) All() iter.Seq2[string, string] {
-	return func(yield func(string, string) bool) {
+func (v Values) All() iter.Seq2[string, []string] {
+	return func(yield func(string, []string) bool) {
 		keys := maps.Keys(v)
 		var sorted []string
 
@@ -1101,10 +1101,8 @@ func (v Values) All() iter.Seq2[string, string] {
 		}
 
 		for _, k := range sorted {
-			for _, val := range v[k] {
-				if !yield(k, val) {
-					return
-				}
+			if !yield(k, v[k]) {
+				return
 			}
 		}
 	}
