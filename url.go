@@ -83,6 +83,8 @@ const (
 	encodeZone
 	encodeUserPassword
 	encodeQueryComponent
+	encodeURLQuery
+	encodeFormQuery
 	encodeFragment
 )
 
@@ -107,6 +109,39 @@ func shouldEscape(c byte, mode encoding) bool {
 	// §2.3 Unreserved characters (alphanum)
 	if 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || '0' <= c && c <= '9' {
 		return false
+	}
+
+	if mode == encodeURLQuery {
+		// Match how Chrome (and the WHATWG URL Standard) serializes a URL's
+		// query. The browser only percent-encodes the "special-query
+		// percent-encode set": C0 controls, space, and " # ' < > — plus
+		// everything above ~ (DEL and non-ASCII, which become UTF-8 %XX).
+		// Sub-delims such as , ; : @ / ? ! $ ( ) * + and the brackets are left
+		// literal, which is why Chrome keeps "1,2,3,4" unescaped where Go's
+		// form encoder writes "1%2C2%2C3%2C4".
+		//
+		// On top of that set we also escape % & + = because Values.Encode joins
+		// pairs as "key=value&key=value": those four would otherwise corrupt the
+		// structure or break round-tripping through ParseQuery. (Chrome escapes
+		// them the same way in URLSearchParams for the same reason.)
+		switch c {
+		case '"', '#', '%', '&', '\'', '+', '<', '=', '>':
+			return true
+		}
+		// C0 controls and space (<= 0x20); DEL and non-ASCII (>= 0x7f).
+		return c <= ' ' || c >= 0x7f
+	}
+
+	if mode == encodeFormQuery {
+		// Match Chrome's URLSearchParams / HTML form submission: the
+		// application/x-www-form-urlencoded percent-encode set. Everything
+		// except ALPHA / DIGIT (handled above) and * - . _ is escaped; space is
+		// rendered as '+' by escape, not %20.
+		switch c {
+		case '*', '-', '.', '_':
+			return false
+		}
+		return true
 	}
 
 	if mode == encodeHost || mode == encodeZone {
@@ -292,7 +327,7 @@ func escape(s string, mode encoding) string {
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		if shouldEscape(c, mode) {
-			if c == ' ' && mode == encodeQueryComponent {
+			if c == ' ' && (mode == encodeQueryComponent || mode == encodeFormQuery) {
 				spaceCount++
 			} else {
 				hexCount++
@@ -327,7 +362,7 @@ func escape(s string, mode encoding) string {
 	j := 0
 	for i := 0; i < len(s); i++ {
 		switch c := s[i]; {
-		case c == ' ' && mode == encodeQueryComponent:
+		case c == ' ' && (mode == encodeQueryComponent || mode == encodeFormQuery):
 			t[j] = '+'
 			j++
 		case shouldEscape(c, mode):
@@ -998,10 +1033,44 @@ func parseQuery(m Values, query string) (err error) {
 	return err
 }
 
-// Encode encodes the values into “URL encoded” form
-// ("bar=baz&foo=quux") sorted by key.
+// Encode encodes the values into “URL encoded” form ("bar=baz&foo=quux")
+// sorted by key. Keys and values are escaped with [QueryEscape], the same way
+// as the standard library net/url: space becomes '+' and reserved characters
+// such as ',' become "%2C".
 // If OrderKey is present in the values, it defines the order of keys.
+//
+// See [Values.EncodeQuery] to match how a browser serializes a URL's query
+// (sub-delims left literal), or [Values.EncodeForm] to match
+// URLSearchParams.toString() exactly.
 func (v Values) Encode() string {
+	return v.encode(encodeQueryComponent)
+}
+
+// EncodeQuery is like [Values.Encode] but escapes keys and values the way a
+// browser serializes a URL's query component (e.g. typed into the address bar
+// or built with new URL(...)). Only the characters a browser encodes there are
+// percent-encoded, so sub-delims such as ',' ';' ':' '@' and '/' are written
+// literally (e.g. "ids=1,2,3,4", not "ids=1%2C2%2C3%2C4"). Space is written as
+// "%20"; the structural characters % & + = are always escaped so the
+// "key=value&..." form stays intact and round-trips through [ParseQuery].
+//
+// If OrderKey is present in the values, it defines the order of keys.
+func (v Values) EncodeQuery() string {
+	return v.encode(encodeURLQuery)
+}
+
+// EncodeForm is like [Values.Encode] but escapes keys and values to match
+// JavaScript's URLSearchParams.toString() and HTML form submission exactly:
+// every character outside ALPHA / DIGIT / '*' '-' '.' '_' is percent-encoded and
+// space becomes '+'. It differs from [Values.Encode] only in that '*' is left
+// literal and '~' is escaped.
+//
+// If OrderKey is present in the values, it defines the order of keys.
+func (v Values) EncodeForm() string {
+	return v.encode(encodeFormQuery)
+}
+
+func (v Values) encode(mode encoding) string {
 	if len(v) == 0 {
 		return ""
 	}
@@ -1048,14 +1117,14 @@ func (v Values) Encode() string {
 	var buf strings.Builder
 	for _, k := range sorted {
 		vs := v[k]
-		keyEscaped := QueryEscape(k)
+		keyEscaped := escape(k, mode)
 		for _, v := range vs {
 			if buf.Len() > 0 {
 				buf.WriteByte('&')
 			}
 			buf.WriteString(keyEscaped)
 			buf.WriteByte('=')
-			buf.WriteString(QueryEscape(v))
+			buf.WriteString(escape(v, mode))
 		}
 	}
 	return buf.String()
